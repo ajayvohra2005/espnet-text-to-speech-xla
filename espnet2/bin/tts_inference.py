@@ -346,6 +346,7 @@ def inference(
         format="%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s",
     )
 
+    # XLA ISSUE
     if ngpu >= 1:
         device = "cuda"
     else:

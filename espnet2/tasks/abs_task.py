@@ -16,6 +16,17 @@ import torch
 import torch.multiprocessing
 import torch.nn
 import torch.optim
+
+# XLA support
+try:
+    import torch_xla as xla
+    import torch_xla.core.xla_model as xm
+    import torch_xla.utils.serialization as xser
+except:
+    xla = None
+    xm = None
+    xser = None
+
 import yaml
 from packaging.version import parse as V
 from torch.utils.data import DataLoader
@@ -2052,7 +2063,11 @@ class AbsTask(ABC):
             raise RuntimeError(
                 f"model must inherit {AbsESPnetModel.__name__}, but got {type(model)}"
             )
-        model.to(device)
+        # For XLA support
+        if device == 'xla':
+            model.to(xm.xla_device())
+        else:
+            model.to(device)
 
         # For LoRA finetuned model, create LoRA adapter
         use_lora = getattr(args, "use_lora", False)
@@ -2060,7 +2075,15 @@ class AbsTask(ABC):
             create_lora_adapter(model, **args.lora_conf)
 
         if model_file is not None:
-            if device == "cuda":
+            # For XLA support
+            if device == "xla" and xla:
+                state_dict = xser.load(model_file)
+                model.load_state_dict(state_dict,
+                    strict=not use_lora,
+                )
+                return model, args
+
+            elif device == "cuda":
                 # NOTE(kamo): "cuda" for torch.load always indicates cuda:0
                 #   in PyTorch<=1.4
                 device = f"cuda:{torch.cuda.current_device()}"
