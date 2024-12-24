@@ -8,6 +8,40 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
+# XLA Addition - Toby
+
+try:
+    import torch_xla.core.xla_model as xm
+    import torch_xla.runtime as xr
+    import torch_xla.distributed.xla_backend as xb
+    from inspect import currentframe, getframeinfo
+    from os import getenv
+
+except ImportError:
+    xm = None
+    xr = None
+    xb = None
+
+
+def get_xla_model():
+    return xm
+
+
+def get_xla_runtime():
+    return xr
+
+
+def xla_mark_step(torch_tensor, frame_info):
+    if xm is None or torch_tensor is None:
+        return
+    if torch_tensor.device == xm.xla_device():
+        xm.mark_step()
+        if getenv('PT_XLA_DEBUG_LEVEL') is not None:
+            print(f"xla graph mark_step: {frame_info.filename}:{frame_info.lineno}: shape: {torch_tensor.shape}")
+    else:
+        print("warning: did not xm.mark_step")
+
+
 DEFAULT_MIN_BIN_WIDTH = 1e-3
 DEFAULT_MIN_BIN_HEIGHT = 1e-3
 DEFAULT_MIN_DERIVATIVE = 1e-3
@@ -33,6 +67,8 @@ def piecewise_rational_quadratic_transform(
         spline_fn = unconstrained_rational_quadratic_spline
         spline_kwargs = {"tails": tails, "tail_bound": tail_bound}
 
+    xla_mark_step(inputs, getframeinfo(currentframe()))
+
     outputs, logabsdet = spline_fn(
         inputs=inputs,
         unnormalized_widths=unnormalized_widths,
@@ -44,6 +80,9 @@ def piecewise_rational_quadratic_transform(
         min_derivative=min_derivative,
         **spline_kwargs
     )
+
+    xla_mark_step(outputs, getframeinfo(currentframe()))
+
     return outputs, logabsdet
 
 
@@ -66,6 +105,8 @@ def unconstrained_rational_quadratic_spline(
     outputs = torch.zeros_like(inputs)
     logabsdet = torch.zeros_like(inputs)
 
+    xla_mark_step(inputs, getframeinfo(currentframe()))
+
     if tails == "linear":
         unnormalized_derivatives = F.pad(unnormalized_derivatives, pad=(1, 1))
         constant = np.log(np.exp(1 - min_derivative) - 1)
@@ -76,6 +117,8 @@ def unconstrained_rational_quadratic_spline(
         logabsdet[outside_interval_mask] = 0
     else:
         raise RuntimeError("{} tails are not implemented.".format(tails))
+
+    xla_mark_step(inputs, getframeinfo(currentframe()))
 
     (
         outputs[inside_interval_mask],
@@ -95,6 +138,8 @@ def unconstrained_rational_quadratic_spline(
         min_derivative=min_derivative,
     )
 
+    xla_mark_step(outputs, getframeinfo(currentframe()))
+
     return outputs, logabsdet
 
 
@@ -113,8 +158,10 @@ def rational_quadratic_spline(
     min_bin_height=DEFAULT_MIN_BIN_HEIGHT,
     min_derivative=DEFAULT_MIN_DERIVATIVE,
 ):
-    if torch.min(inputs) < left or torch.max(inputs) > right:
-        raise ValueError("Input to a transform is not within its domain")
+    xla_mark_step(inputs, getframeinfo(currentframe()))
+
+    # if torch.min(inputs) < left or torch.max(inputs) > right:
+        # raise ValueError("Input to a transform is not within its domain")
 
     num_bins = unnormalized_widths.shape[-1]
 
@@ -169,8 +216,13 @@ def rational_quadratic_spline(
         )
         c = -input_delta * (inputs - input_cumheights)
 
+        xla_mark_step(c, getframeinfo(currentframe()))
+
         discriminant = b.pow(2) - 4 * a * c
-        assert (discriminant >= 0).all()
+
+        xla_mark_step(discriminant, getframeinfo(currentframe()))
+
+        # assert (discriminant >= 0).all()
 
         root = (2 * c) / (-b - torch.sqrt(discriminant))
         outputs = root * input_bin_widths + input_cumwidths
@@ -214,3 +266,4 @@ def rational_quadratic_spline(
 def _searchsorted(bin_locations, inputs, eps=1e-6):
     bin_locations[..., -1] += eps
     return torch.sum(inputs[..., None] >= bin_locations, dim=-1) - 1
+

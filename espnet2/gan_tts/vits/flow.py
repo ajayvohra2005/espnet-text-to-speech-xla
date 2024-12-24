@@ -14,6 +14,39 @@ import torch
 
 from espnet2.gan_tts.vits.transform import piecewise_rational_quadratic_transform
 
+# XLA Addition - Toby
+
+try:
+    import torch_xla.core.xla_model as xm
+    import torch_xla.runtime as xr
+    import torch_xla.distributed.xla_backend as xb
+    from inspect import currentframe, getframeinfo
+    from os import getenv
+
+except ImportError:
+    xm = None
+    xr = None
+    xb = None
+
+
+def get_xla_model():
+    return xm
+
+
+def get_xla_runtime():
+    return xr
+
+
+def xla_mark_step(torch_tensor, frame_info):
+    if xm is None or torch_tensor is None:
+        return
+    if torch_tensor.device == xm.xla_device():
+        xm.mark_step()
+        if getenv('PT_XLA_DEBUG_LEVEL') is not None:
+            print(f"xla graph mark_step: {frame_info.filename}:{frame_info.lineno}: shape: {torch_tensor.shape}")
+    else:
+        print("warning: did not xm.mark_step")
+
 
 class FlipFlow(torch.nn.Module):
     """Flip flow module."""
@@ -279,6 +312,9 @@ class ConvFlow(torch.nn.Module):
             Tensor: Log-determinant tensor for NLL (B,) if not inverse.
 
         """
+        xla_mark_step(x, getframeinfo(currentframe()))
+
+
         xa, xb = x.split(x.size(1) // 2, 1)
         h = self.input_conv(xa)
         h = self.dds_conv(h, x_mask, g=g)
@@ -288,11 +324,18 @@ class ConvFlow(torch.nn.Module):
         # (B, half_channels, bins * 3 - 1, T) -> (B, half_channels, T, bins * 3 - 1)
         h = h.reshape(b, c, -1, t).permute(0, 1, 3, 2)
 
+        xla_mark_step(h, getframeinfo(currentframe()))
+
         # TODO(kan-bayashi): Understand this calculation
         denom = math.sqrt(self.hidden_channels)
         unnorm_widths = h[..., : self.bins] / denom
         unnorm_heights = h[..., self.bins : 2 * self.bins] / denom
         unnorm_derivatives = h[..., 2 * self.bins :]
+
+        xla_mark_step(unnorm_derivatives, getframeinfo(currentframe()))
+        xla_mark_step(xb, getframeinfo(currentframe()))
+        xla_mark_step(xa, getframeinfo(currentframe()))
+
         xb, logdet_abs = piecewise_rational_quadratic_transform(
             xb,
             unnorm_widths,
@@ -302,9 +345,16 @@ class ConvFlow(torch.nn.Module):
             tails="linear",
             tail_bound=self.tail_bound,
         )
+
+        xla_mark_step(xb, getframeinfo(currentframe()))
+
         x = torch.cat([xa, xb], 1) * x_mask
         logdet = torch.sum(logdet_abs * x_mask, [1, 2])
+
+        xla_mark_step(x, getframeinfo(currentframe()))
+
         if not inverse:
             return x, logdet
         else:
             return x
+

@@ -14,6 +14,42 @@ import torch
 
 from espnet.nets.pytorch_backend.conformer.encoder import Encoder
 from espnet.nets.pytorch_backend.nets_utils import make_non_pad_mask
+from numpy.ma.core import shape
+
+
+# XLA Addition - Toby
+
+try:
+    import torch_xla.core.xla_model as xm
+    import torch_xla.runtime as xr
+    import torch_xla.distributed.xla_backend as xb
+    from inspect import currentframe, getframeinfo
+    from os import getenv
+
+except ImportError:
+    xm = None
+    xr = None
+    xb = None
+
+
+def get_xla_model():
+    return xm
+
+
+def get_xla_runtime():
+    return xr
+
+
+def xla_mark_step(torch_tensor, frame_info):
+    if xm is None or torch_tensor is None:
+        return
+    if torch_tensor.device == xm.xla_device():
+        xm.mark_step()
+        if getenv('PT_XLA_DEBUG_LEVEL') is not None:
+            print(f"xla graph mark_step: {frame_info.filename}:{frame_info.lineno}: shape: {torch_tensor.shape}")
+    else:
+        print("warning: did not xm.mark_step")
+
 
 
 class TextEncoder(torch.nn.Module):
@@ -119,7 +155,12 @@ class TextEncoder(torch.nn.Module):
             Tensor: Mask tensor for input tensor (B, 1, T_text).
 
         """
+        xla_mark_step(x, getframeinfo(currentframe()))
+
         x = self.emb(x) * math.sqrt(self.attention_dim)
+
+        xla_mark_step(x, getframeinfo(currentframe()))
+
         x_mask = (
             make_non_pad_mask(x_lengths)
             .to(
@@ -128,6 +169,9 @@ class TextEncoder(torch.nn.Module):
             )
             .unsqueeze(1)
         )
+
+        xla_mark_step(x_mask, getframeinfo(currentframe()))
+
         # encoder assume the channel last (B, T_text, attention_dim)
         # but mask shape shoud be (B, 1, T_text)
         x, _ = self.encoder(x, x_mask)
@@ -137,4 +181,7 @@ class TextEncoder(torch.nn.Module):
         stats = self.proj(x) * x_mask
         m, logs = stats.split(stats.size(1) // 2, dim=1)
 
+        xla_mark_step(x, getframeinfo(currentframe()))
+
         return x, m, logs, x_mask
+
