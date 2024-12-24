@@ -8,6 +8,41 @@ from typing import Dict
 import numpy as np
 import torch
 
+# XLA Addition - Toby
+
+try:
+    import torch_xla.core.xla_model as xm
+    import torch_xla.runtime as xr
+    import torch_xla.distributed.xla_backend as xb
+    from inspect import currentframe, getframeinfo
+    from os import getenv
+
+except ImportError:
+    xm = None
+    xr = None
+    xb = None
+
+
+def get_xla_model():
+    return xm
+
+
+def get_xla_runtime():
+    return xr
+
+
+def xla_mark_step(torch_tensor, frame_info):
+    if xm is None or torch_tensor is None:
+        return
+    if torch_tensor.device == xm.xla_device():
+        xm.mark_step()
+        if getenv('PT_XLA_DEBUG_LEVEL') is not None:
+            print(f"xla graph mark_step: {frame_info.filename}:{frame_info.lineno}: shape: {torch_tensor.shape}")
+    else:
+        print("warning: did not xm.mark_step")
+
+
+
 
 def to_device(m, x):
     """Send tensor into the device of the module.
@@ -245,13 +280,27 @@ def _make_pad_mask_traceable(lengths, xs, length_dim, maxlen=None):
     # clip max(length) to maxlen
     lengths = torch.clamp(lengths, max=maxlen).type(torch.long)
 
-    mask = torch.ones(maxlen + 1, maxlen + 1, dtype=torch.bool, device=device)
-    mask = triu_onnx(mask)[1:, :-1]  # onnx cannot handle diagonal argument.
+    xla_mark_step(lengths, getframeinfo(currentframe()))
+    xla_mark_step(maxlen, getframeinfo(currentframe()))
+
+    cpu_maxlen = maxlen.to('cpu')
+
+    # mask = torch.ones(maxlen + 1, maxlen + 1, dtype=torch.bool, device=device)
+    # mask = triu_onnx(mask)[1:, :-1]  # onnx cannot handle diagonal argument.
+    # mask = mask[lengths - 1][..., :maxlen]
+
+    cpu_mask = torch.ones(cpu_maxlen + 1, cpu_maxlen + 1, dtype=torch.bool, device='cpu')
+    cpu_mask = triu_onnx(cpu_mask)[1:, :-1]  # onnx cannot handle diagonal argument.
+    mask = cpu_mask.to(device)
+
     mask = mask[lengths - 1][..., :maxlen]
 
     if xs is not None and len(xs.shape) == 3 and length_dim == 1:
-        return mask.transpose(1, 2)
+        mask_t = mask.transpose(1, 2)
+        xla_mark_step(mask_t, getframeinfo(currentframe()))
+        return mask_t
     else:
+        xla_mark_step(mask, getframeinfo(currentframe()))
         return mask
 
 
@@ -639,3 +688,4 @@ def trim_by_ctc_posterior(
         pos_emb = pos_emb[:, : h.size(1)]
 
     return h, masks, pos_emb
+
