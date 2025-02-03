@@ -155,11 +155,7 @@ class TextEncoder(torch.nn.Module):
             Tensor: Mask tensor for input tensor (B, 1, T_text).
 
         """
-        xla_mark_step(x, getframeinfo(currentframe()))
-
         x = self.emb(x) * math.sqrt(self.attention_dim)
-
-        xla_mark_step(x, getframeinfo(currentframe()))
 
         x_mask = (
             make_non_pad_mask(x_lengths)
@@ -169,8 +165,6 @@ class TextEncoder(torch.nn.Module):
             )
             .unsqueeze(1)
         )
-
-        xla_mark_step(x_mask, getframeinfo(currentframe()))
 
         # encoder assume the channel last (B, T_text, attention_dim)
         # but mask shape shoud be (B, 1, T_text)
@@ -182,6 +176,8 @@ class TextEncoder(torch.nn.Module):
         m, logs = stats.split(stats.size(1) // 2, dim=1)
 
         xla_mark_step(x, getframeinfo(currentframe()))
+
+        # print(f"text_encoder: x: {x.shape}, m: {m.shape}, logs: {logs.shape}, x_mask: {x_mask.shape}")
 
         return x, m, logs, x_mask
 

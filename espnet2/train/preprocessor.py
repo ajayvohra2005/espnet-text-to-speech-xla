@@ -421,6 +421,19 @@ class CommonPreprocessor(AbsPreprocessor):
         assert check_return_type(data)
         return data
 
+    def padded_text_ints(self, text_ints):
+        """
+        currently this pads odd length syllable strings to make them even
+        :param text_ints: a set of ints that map to syllable structure of string
+        :return: the input array with space padding
+        """
+        input_text_int_len = len(text_ints)
+        if input_text_int_len % 2 == 0:
+            return text_ints
+        else:
+            return text_ints + [0]  # 0 -> <blank>, 1 -> <unk>, 77 -> <sos/eos>
+            
+        
     def _text_process(
         self, data: Dict[str, Union[str, np.ndarray]]
     ) -> Dict[str, np.ndarray]:
@@ -431,6 +444,8 @@ class CommonPreprocessor(AbsPreprocessor):
             text = self.text_cleaner(text)
             tokens = self.tokenizer.text2tokens(text)
             text_ints = self.token_id_converter.tokens2ids(tokens)
+            # TOBY - Padding input phoneme vector for XLA
+            text_ints = self.padded_text_ints(text_ints)
             if len(text_ints) > 500:
                 logging.warning(
                     "The length of the text output exceeds 500, "

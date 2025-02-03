@@ -6,6 +6,41 @@
 This code is modified from https://github.com/kan-bayashi/ParallelWaveGAN.
 
 """
+# XLA Addition - Toby
+
+try:
+    import torch_xla.core.xla_model as xm
+    import torch_xla.runtime as xr
+    import torch_xla.distributed.xla_backend as xb
+    from inspect import currentframe, getframeinfo
+    from os import getenv
+
+except ImportError:
+    xm = None
+    xr = None
+    xb = None
+
+
+def get_xla_model():
+    return xm
+
+
+def get_xla_runtime():
+    return xr
+
+
+def xla_mark_step(torch_tensor, frame_info):
+    if xm is None or torch_tensor is None:
+        return
+    if torch_tensor.device == xm.xla_device():
+        xm.mark_step()
+        if getenv('PT_XLA_DEBUG_LEVEL') is not None:
+            print(f"xla graph mark_step: {frame_info.filename}:{frame_info.lineno}: shape: {torch_tensor.shape}")
+    else:
+        print("warning: did not xm.mark_step")
+
+
+
 
 import copy
 import logging
@@ -147,6 +182,8 @@ class HiFiGANGenerator(torch.nn.Module):
 
         """
         c = self.input_conv(c)
+        xla_mark_step(c, getframeinfo(currentframe()))
+        print(f"Generator start shape: {c.shape}")
         if g is not None:
             c = c + self.global_conv(g)
         for i in range(self.num_upsamples):
@@ -156,6 +193,7 @@ class HiFiGANGenerator(torch.nn.Module):
                 cs += self.blocks[i * self.num_blocks + j](c)
             c = cs / self.num_blocks
         c = self.output_conv(c)
+        print(f"Generator end shape: {c.shape}")
 
         return c
 

@@ -333,8 +333,6 @@ class ConvFlow(torch.nn.Module):
         unnorm_derivatives = h[..., 2 * self.bins :]
 
         xla_mark_step(unnorm_derivatives, getframeinfo(currentframe()))
-        xla_mark_step(xb, getframeinfo(currentframe()))
-        xla_mark_step(xa, getframeinfo(currentframe()))
 
         xb, logdet_abs = piecewise_rational_quadratic_transform(
             xb,
@@ -357,4 +355,3 @@ class ConvFlow(torch.nn.Module):
             return x, logdet
         else:
             return x
-

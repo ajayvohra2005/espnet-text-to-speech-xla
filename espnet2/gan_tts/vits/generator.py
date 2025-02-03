@@ -22,6 +22,39 @@ from espnet2.gan_tts.vits.residual_coupling import ResidualAffineCouplingBlock
 from espnet2.gan_tts.vits.text_encoder import TextEncoder
 from espnet.nets.pytorch_backend.nets_utils import make_non_pad_mask
 
+# XLA Addition - Toby
+
+try:
+    import torch_xla.core.xla_model as xm
+    import torch_xla.runtime as xr
+    import torch_xla.distributed.xla_backend as xb
+    from inspect import currentframe, getframeinfo
+    from os import getenv
+
+except ImportError:
+    xm = None
+    xr = None
+    xb = None
+
+
+def get_xla_model():
+    return xm
+
+
+def get_xla_runtime():
+    return xr
+
+
+def xla_mark_step(torch_tensor, frame_info):
+    if xm is None or torch_tensor is None:
+        return
+    if torch_tensor.device == xm.xla_device():
+        xm.mark_step()
+        if getenv('PT_XLA_DEBUG_LEVEL') is not None:
+            print(f"xla graph mark_step: {frame_info.filename}:{frame_info.lineno}: shape: {torch_tensor.shape}")
+    else:
+        print("warning: did not xm.mark_step")
+
 
 class VITSGenerator(torch.nn.Module):
     """Generator module in VITS.
@@ -525,7 +558,13 @@ class VITSGenerator(torch.nn.Module):
                 )
                 w = torch.exp(logw) * x_mask * alpha
                 dur = torch.ceil(w)
-            y_lengths = torch.clamp_min(torch.sum(dur, [1, 2]), 1).long()
+            # Toby - padding/quantizing y_lengths to reduce variability of output vector
+            quantize_to = 8
+            sum_length = torch.sum(dur, [1, 2])
+            if sum_length % quantize_to != 0:
+                sum_length = sum_length + (quantize_to - (sum_length % quantize_to))
+            y_lengths = torch.clamp_min(sum_length, 1).long()
+
             y_mask = make_non_pad_mask(y_lengths).unsqueeze(1).to(text.device)
             attn_mask = torch.unsqueeze(x_mask, 2) * torch.unsqueeze(y_mask, -1)
             attn = self._generate_path(dur, attn_mask)
@@ -546,6 +585,8 @@ class VITSGenerator(torch.nn.Module):
             z_p = m_p + torch.randn_like(m_p) * torch.exp(logs_p) * noise_scale
             z = self.flow(z_p, y_mask, g=g, inverse=True)
             wav = self.decoder((z * y_mask)[:, :, :max_len], g=g)
+
+        xla_mark_step(x, getframeinfo(currentframe()))
 
         return wav.squeeze(1), attn.squeeze(1), dur.squeeze(1)
 
