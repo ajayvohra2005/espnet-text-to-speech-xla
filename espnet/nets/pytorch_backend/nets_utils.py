@@ -8,7 +8,6 @@ from typing import Dict
 import numpy as np
 import torch
 
-# XLA Addition - Toby
 
 try:
     import torch_xla.core.xla_model as xm
@@ -22,7 +21,12 @@ except ImportError:
     xr = None
     xb = None
 
-
+    def currentframe():
+        return None
+    
+    def getframeinfo(frame=None):
+        return None
+    
 def get_xla_model():
     return xm
 

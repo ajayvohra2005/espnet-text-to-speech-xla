@@ -64,7 +64,7 @@ def framing(
 
     # Created strided array of data segments
     if frame_length == 1 and frame_length == frame_shift:
-        result = x[..., None]
+        result = x.unsqueeze(-1)
     else:
         shape = x.shape[:-1] + (
             (x.shape[-1] - frame_length) // frame_shift + 1,
@@ -115,7 +115,7 @@ def detect_non_silence(
     detect_frames = power / mean_power > threshold
     # detects: (C, T, F)
     detects = np.broadcast_to(
-        detect_frames[..., None], detect_frames.shape + (frame_shift,)
+        detect_frames.unsqueeze(-1), detect_frames.shape + (frame_shift,)
     )
     # detects: (C, TF)
     detects = detects.reshape(*detect_frames.shape[:-1], -1)

@@ -22,6 +22,11 @@ except ImportError:
     xr = None
     xb = None
 
+    def currentframe():
+        return None
+    
+    def getframeinfo(frame=None):
+        return None
 
 def get_xla_model():
     return xm

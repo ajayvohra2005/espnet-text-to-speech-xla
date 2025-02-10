@@ -1,0 +1,59 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Docker: Python Debug CUDA",
+            "type": "docker",
+            "request": "launch",
+            "preLaunchTask": "docker-run-cuda: debug",
+            "python": {
+                "pathMappings": [
+                    {
+                        "localRoot": "${workspaceFolder}",
+                        "remoteRoot": "/app"
+                    }
+                ],
+                "env": {}, // set environment in tasks.json
+                "projectType": "general",
+                "args": []
+            }
+        },
+        {
+            "name": "Docker: Python Debug XLA",
+            "type": "docker",
+            "request": "launch",
+            "preLaunchTask": "docker-run-xla: debug",
+            "python": {
+                "pathMappings": [
+                    {
+                        "localRoot": "${workspaceFolder}",
+                        "remoteRoot": "/app"
+                    }
+                ],
+                "env": {}, // set environment in tasks.json
+                "projectType": "general",
+                "args": []
+            }
+        },
+        {
+            "name": "Docker: Python Debug Neuron",
+            "type": "docker",
+            "request": "launch",
+            "preLaunchTask": "docker-run-neuron: debug",
+            "python": {
+                "pathMappings": [
+                    {
+                        "localRoot": "${workspaceFolder}",
+                        "remoteRoot": "/app"
+                    }
+                ],
+                "env": {}, // set environment in tasks.json
+                "projectType": "general",
+                "args": []
+            }
+        },
+    ]
+}

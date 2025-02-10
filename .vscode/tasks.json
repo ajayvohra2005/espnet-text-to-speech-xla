@@ -1,0 +1,125 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "docker-build",
+			"label": "docker-build-cuda",
+			"dockerBuild": {
+				"tag": "espnet-text-to-speech-cuda:latest",
+				"dockerfile": "${workspaceFolder}/Dockerfile.cuda",
+				"context": "${workspaceFolder}",
+				"pull": true
+			}
+		},
+		{
+			"type": "docker-build",
+			"label": "docker-build-xla",
+			"dockerBuild": {
+				"tag": "espnet-text-to-speech-xla:latest",
+				"dockerfile": "${workspaceFolder}/Dockerfile.xla",
+				"context": "${workspaceFolder}",
+				"pull": true
+			}
+		},
+		{
+			"type": "docker-build",
+			"label": "docker-build-neuron",
+			"dockerBuild": {
+				"tag": "espnet-text-to-speech-neuron:latest",
+				"dockerfile": "${workspaceFolder}/Dockerfile.neuron",
+				"context": "${workspaceFolder}",
+				"pull": true
+			}
+		},
+		{
+			"type": "docker-run",
+			"label": "docker-run-cuda: debug",
+			"dependsOn": [
+				"docker-build-cuda"
+			],
+			"python": {
+				"file": "tts_xla_hello_world.py"
+			},
+			"dockerRun": {
+				"image": "docker.io/library/espnet-text-to-speech-cuda:latest",
+				"customOptions": "--gpus=all --shm-size=16g",
+				"remove": true,
+				"env": {
+					"NLTK_DATA": "/app/nltk_data"
+				},
+				"volumes": [
+					{
+						"localPath": "${workspaceFolder}",
+						"containerPath": "/app"
+					},
+					{
+						"localPath": "/home/ubuntu/efs/datasets",
+						"containerPath": "/datasets"
+					}
+				]
+			}
+		},
+		{
+			"type": "docker-run",
+			"label": "docker-run-xla: debug",
+			"dependsOn": [
+				"docker-build-xla"
+			],
+			"python": {
+				"file": "tts_xla_hello_world.py"
+			},
+			"dockerRun": {
+				"image": "docker.io/library/espnet-text-to-speech-xla:latest",
+				"customOptions": "--gpus=all --shm-size=16g",
+				"remove": true,
+				"env": {
+					"PT_XLA_DEBUG": "0",
+					"PT_XLA_DEBUG_FILE": "./pt_xla_debug.txt",
+					"NLTK_DATA": "/app/nltk_data"
+				},
+				"volumes": [
+					{
+						"localPath": "${workspaceFolder}",
+						"containerPath": "/app"
+					},
+					{
+						"localPath": "/home/ubuntu/efs/datasets",
+						"containerPath": "/datasets"
+					}
+				]
+			}
+		},
+		{
+			"type": "docker-run",
+			"label": "docker-run-neuron: debug",
+			"dependsOn": [
+				"docker-build-neuron"
+			],
+			"python": {
+				"file": "tts_xla_hello_world.py"
+			},
+			"dockerRun": {
+				"image": "docker.io/library/espnet-text-to-speech-neuron:latest",
+				"remove": true,
+				"customOptions": "--device=/dev/neuron0",
+				"env": {
+                	"PT_XLA_DEBUG": "0",
+					"PT_XLA_DEBUG_FILE": "./pt_xla_debug.txt",
+					"NLTK_DATA": "/app/nltk_data",
+					"NEURON_CC_FLAGS": "--cache_dir=./cache",
+					"NEURON_USE_EAGER_DEBUG_MODE": "1"
+				},
+				"volumes": [
+					{
+						"localPath": "${workspaceFolder}",
+						"containerPath": "/app"
+					},
+					{
+						"localPath": "/home/ubuntu/efs/datasets",
+						"containerPath": "/datasets"
+					}
+				]
+			}
+		}
+	]
+}
